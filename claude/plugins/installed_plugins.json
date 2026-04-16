@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "plugins": {
+    "oh-my-claudecode@omc": [
+      {
+        "scope": "user",
+        "installPath": "/Users/miller/.claude/plugins/cache/omc/oh-my-claudecode/4.11.4",
+        "version": "4.11.4",
+        "installedAt": "2026-04-10T04:08:37.793Z",
+        "lastUpdated": "2026-04-10T04:08:37.793Z",
+        "isLocal": true
+      }
+    ]
+  }
+}
