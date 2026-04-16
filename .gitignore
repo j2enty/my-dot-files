@@ -16,6 +16,4 @@ claude/ide/
 claude/plans/
 claude/tasks/
 claude/.omc/
-claude/plugins/cache/
-claude/plugins/.DS_Store
-claude/plugins/*/.DS_Store
+claude/plugins/
