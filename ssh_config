@@ -1,0 +1,26 @@
+# 맥미니 (Tailscale)
+Host macmini
+  HostName miller-macmini.taila343d9.ts.net
+  User miller
+  IdentityFile ~/.ssh/id_ed25519
+  IdentitiesOnly yes
+  SendEnv TERM
+  SetEnv TERM=xterm-256color
+
+# GitHub - mkfactory-app
+Host mkfactory-app-GitHub
+  HostName github.com
+  User git
+  IdentitiesOnly yes
+  UseKeychain yes
+  AddKeysToAgent yes
+  IdentityFile ~/.ssh/mkfactory-app-GitHub
+
+# GitHub - j2enty
+Host j2enty-GitHub
+  HostName github.com
+  User git
+  IdentitiesOnly yes
+  UseKeychain yes
+  AddKeysToAgent yes
+  IdentityFile ~/.ssh/j2enty-GitHub
