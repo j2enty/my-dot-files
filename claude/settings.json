@@ -1,4 +1,7 @@
 {
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
   "model": "opus",
   "hooks": {
     "Stop": [
@@ -31,9 +34,6 @@
   "enabledPlugins": {
     "oh-my-claudecode@omc": true
   },
-  "effortLevel": "high",
-  "skipDangerousModePermissionPrompt": true,
-  "theme": "dark",
   "extraKnownMarketplaces": {
     "omc": {
       "source": {
@@ -42,9 +42,9 @@
       }
     }
   },
-  "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
-  },
+  "effortLevel": "xhigh",
+  "skipDangerousModePermissionPrompt": true,
+  "theme": "dark",
   "omcHud": {
     "preset": "focused",
     "elements": {
