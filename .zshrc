@@ -98,6 +98,12 @@ if command -v navi &>/dev/null; then
 fi
 
 # ============================================
+# Secrets — macOS Keychain 에서 읽어 env 로 주입
+# ============================================
+# GitHub MCP 서버용 PAT (security add-generic-password -s github-mcp 로 저장)
+export GITHUB_PERSONAL_ACCESS_TOKEN="$(security find-generic-password -s github-mcp -w 2>/dev/null)"
+
+# ============================================
 # zoxide — 반드시 파일 끝 (경고 방지)
 # ============================================
 if command -v zoxide &>/dev/null; then
