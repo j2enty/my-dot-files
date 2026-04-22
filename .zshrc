@@ -1,15 +1,18 @@
-# Fastfetch (인터랙티브 셸에서만)
+# ============================================
+# 인터랙티브 셸 전용
+# ============================================
 if [[ $- == *i* ]] && command -v fastfetch &>/dev/null; then
   fastfetch
 fi
 
-# Oh My Zsh
+# ============================================
+# Oh My Zsh + Starship 프롬프트
+# ============================================
 export ZSH="$HOME/.oh-my-zsh"
 ZSH_THEME=""
 plugins=(git)
 source "$ZSH/oh-my-zsh.sh"
 
-# Starship 프롬프트
 if command -v starship &>/dev/null; then
   eval "$(starship init zsh)"
 fi
@@ -26,25 +29,22 @@ source "$HOME/.local/share/zinit/zinit.git/zinit.zsh"
 autoload -Uz _zinit
 (( ${+_comps} )) && _comps[zinit]=_zinit
 
-# 명령어 구문 강조
-zinit light zdharma-continuum/fast-syntax-highlighting
-# 히스토리 기반 자동 완성
-zinit light zsh-users/zsh-autosuggestions
-# 추가 자동 완성 정의
-zinit light zsh-users/zsh-completions
-# Autojump
-zinit snippet /opt/homebrew/share/autojump/autojump.zsh
+zinit light zdharma-continuum/fast-syntax-highlighting   # 명령어 구문 강조
+zinit light zsh-users/zsh-autosuggestions                # 히스토리 기반 자동 완성
+zinit light zsh-users/zsh-completions                    # 추가 자동 완성 정의
+zinit snippet /opt/homebrew/share/autojump/autojump.zsh  # Autojump
 
 # ============================================
-# SCM Breeze (Git 단축키)
+# 환경 변수 / PATH
 # ============================================
-# if [[ -z "$CLAUDECODE" ]]; then
-#   [ -s "$HOME/.scm_breeze/scm_breeze.sh" ] && source "$HOME/.scm_breeze/scm_breeze.sh"
-# fi
+export PATH="$HOME/.local/bin:$PATH"
+export JAVA_HOME=$(/usr/libexec/java_home -v 21)
+export PATH="$JAVA_HOME/bin:$PATH"
 
 # ============================================
-# 모던 CLI 별칭
+# 별칭
 # ============================================
+# 모던 CLI 대체
 alias ls="lsd"
 alias ll="lsd -la"
 alias lt="lsd --tree"
@@ -57,31 +57,14 @@ alias du="dust"
 alias vim="nvim"
 alias vi="nvim"
 alias lg="lazygit"
+
+# 단축키
 alias c="clear"
 alias ..="cd .."
 alias ...="cd ../.."
-
-# ============================================
-# fzf + zoxide + navi
-# ============================================
-if command -v fzf &>/dev/null; then
-  source <(fzf --zsh)
-fi
-
-if command -v zoxide &>/dev/null; then
-  eval "$(zoxide init --cmd cd zsh)"
-fi
-
-if command -v navi &>/dev/null; then
-  eval "$(navi widget zsh)"
-fi
-
-# ============================================
-# mise (런타임 버전 관리자)
-# ============================================
-if command -v mise &>/dev/null; then
-  eval "$(mise activate zsh)"
-fi
+alias python=python3
+alias macscreen='open vnc://miller-macmini.taila343d9.ts.net'
+alias yolo='claude --dangerously-skip-permissions'
 
 # ============================================
 # 도구 런처
@@ -99,9 +82,24 @@ function tools() {
   [[ -n "$cmd" ]] && eval "$cmd"
 }
 
+# ============================================
+# 런타임 버전 관리자 / CLI 보조
+# ============================================
+if command -v mise &>/dev/null; then
+  eval "$(mise activate zsh)"
+fi
 
+if command -v fzf &>/dev/null; then
+  source <(fzf --zsh)
+fi
 
-##### Alias #####
-alias python=python3
-alias macscreen='open vnc://miller-macmini.taila343d9.ts.net'
-export PATH="$HOME/.local/bin:$PATH"
+if command -v navi &>/dev/null; then
+  eval "$(navi widget zsh)"
+fi
+
+# ============================================
+# zoxide — 반드시 파일 끝 (경고 방지)
+# ============================================
+if command -v zoxide &>/dev/null; then
+  eval "$(zoxide init --cmd cd zsh)"
+fi
