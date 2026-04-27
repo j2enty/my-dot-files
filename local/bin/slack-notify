@@ -1,0 +1,235 @@
+#!/usr/bin/env python3
+"""slack-notify: Claude Code용 슬랙 알림 헬퍼.
+
+기본 동작:
+  - config 로드: ~/.claude/slack/config.json (공유 base) + ~/.claude/slack/config.local.json (머신별 override, 선택)
+  - cwd로부터 위로 올라가며 projects 매핑을 찾음
+  - 매칭되는 프로젝트가 있으면 그 채널로, 없으면 config.fallback 채널로 송신
+  - 프로젝트 매칭 시 thread_ts는 <project_root>/.omc/state/slack_thread.json 에 영속화
+
+Usage:
+  slack-notify "메시지"              # thread 있으면 reply, 없으면 새 메시지
+  slack-notify --new "STT 시작"      # 새 thread 시작 (기존 thread 무시 후 덮어씀)
+  slack-notify --reply "10/277"      # 명시적 reply (기존 thread 없으면 에러)
+  slack-notify --close "완료"        # 마지막 reply + thread 상태 클리어
+  slack-notify --status              # 현재 컨텍스트 상태 출력 (메시지 X)
+  slack-notify --where               # 어느 타겟으로 갈지만 출력 (메시지 X)
+
+Options:
+  --project PATH                     # cwd 대신 다른 프로젝트 경로 강제
+  --channel ID                       # 매핑 무시하고 특정 채널 ID 강제
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+CONFIG_PATH = Path.home() / ".claude" / "slack" / "config.json"
+LOCAL_CONFIG_PATH = Path.home() / ".claude" / "slack" / "config.local.json"
+SLACK_API = "https://slack.com/api"
+
+
+def die(msg: str, code: int = 1) -> None:
+    print(f"slack-notify: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def load_config() -> dict:
+    """base config + 머신별 local override 를 merge해 반환.
+
+    - base: ~/.claude/slack/config.json (dotfile 공유)
+    - local: ~/.claude/slack/config.local.json (머신별, 없어도 됨)
+    - top-level 키는 local 우선, projects는 머신별 매핑이 우선되도록 dict 합집합
+    """
+    if not CONFIG_PATH.exists():
+        die(f"config 없음: {CONFIG_PATH}")
+    cfg = json.loads(CONFIG_PATH.read_text())
+    if LOCAL_CONFIG_PATH.exists():
+        local = json.loads(LOCAL_CONFIG_PATH.read_text())
+        merged_projects = {**cfg.get("projects", {}), **local.get("projects", {})}
+        cfg.update(local)
+        cfg["projects"] = merged_projects
+    return cfg
+
+
+def get_token(cfg: dict) -> str:
+    env_name = cfg.get("token_env", "SLACK_BOT_SEUL_TOKEN")
+    token = os.environ.get(env_name)
+    if not token:
+        die(f"환경변수 {env_name} 미설정")
+    return token
+
+
+def slack_api(method: str, payload: dict, token: str) -> dict:
+    req = urllib.request.Request(
+        f"{SLACK_API}/{method}",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json; charset=utf-8",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.URLError as e:
+        die(f"네트워크 오류: {e}")
+    if not data.get("ok"):
+        die(f"Slack API {method} 실패: {data.get('error')} | full={data}")
+    return data
+
+
+def find_project_match(cfg: dict, start: Path) -> tuple[Path | None, str | None]:
+    """cwd 기준 위로 올라가며 projects 매핑의 prefix와 일치하는 가장 가까운 프로젝트를 찾음."""
+    projects = cfg.get("projects", {})
+    cur = start.resolve()
+    while True:
+        s = str(cur)
+        if s in projects:
+            return cur, projects[s]
+        if cur.parent == cur:
+            return None, None
+        cur = cur.parent
+
+
+def resolve_target(
+    cfg: dict,
+    project_override: str | None,
+    channel_override: str | None,
+) -> tuple[str, Path, str]:
+    """반환: (channel_id, thread_state_path, label)."""
+    if channel_override:
+        return (
+            channel_override,
+            Path.home() / ".claude" / "slack" / f"thread_{channel_override}.json",
+            f"채널 {channel_override} (강제)",
+        )
+    cwd = Path(project_override) if project_override else Path.cwd()
+    root, channel = find_project_match(cfg, cwd)
+    if root and channel:
+        return (
+            channel,
+            root / ".omc" / "state" / "slack_thread.json",
+            f"프로젝트 {root.name} → {channel}",
+        )
+    fallback = cfg.get("fallback")
+    if fallback:
+        return (
+            fallback,
+            Path.home() / ".claude" / "slack" / f"thread_{fallback}.json",
+            f"fallback ({fallback})",
+        )
+    die("매칭되는 프로젝트 없고 fallback도 없음")
+
+
+def load_thread(path: Path) -> dict | None:
+    if path.exists():
+        return json.loads(path.read_text())
+    return None
+
+
+def save_thread(path: Path, ts: str, channel: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"thread_ts": ts, "channel": channel}, indent=2) + "\n")
+
+
+def clear_thread(path: Path) -> None:
+    if path.exists():
+        path.unlink()
+
+
+def post(channel: str, text: str, token: str, thread_ts: str | None = None) -> dict:
+    payload: dict = {"channel": channel, "text": text}
+    if thread_ts:
+        payload["thread_ts"] = thread_ts
+    return slack_api("chat.postMessage", payload, token)
+
+
+def cmd_send(text: str, mode: str, project: str | None, channel_override: str | None) -> None:
+    cfg = load_config()
+    token = get_token(cfg)
+    channel, thread_path, label = resolve_target(cfg, project, channel_override)
+    state = load_thread(thread_path)
+    state_valid = bool(state and state.get("channel") == channel)
+
+    if mode == "new":
+        resp = post(channel, text, token)
+        save_thread(thread_path, resp["ts"], channel)
+        print(f"[NEW]   {label}: ts={resp['ts']}")
+    elif mode == "reply":
+        if not state_valid:
+            die(f"reply할 thread 없음: {thread_path}")
+        post(channel, text, token, thread_ts=state["thread_ts"])
+        print(f"[REPLY] {label}: thread={state['thread_ts']}")
+    elif mode == "close":
+        if not state_valid:
+            die(f"close할 thread 없음: {thread_path}")
+        post(channel, text, token, thread_ts=state["thread_ts"])
+        clear_thread(thread_path)
+        print(f"[CLOSE] {label}: thread={state['thread_ts']} → cleared")
+    else:  # auto
+        if state_valid:
+            post(channel, text, token, thread_ts=state["thread_ts"])
+            print(f"[REPLY] {label}: thread={state['thread_ts']}")
+        else:
+            resp = post(channel, text, token)
+            save_thread(thread_path, resp["ts"], channel)
+            print(f"[NEW]   {label}: ts={resp['ts']}")
+
+
+def cmd_status(project: str | None, channel_override: str | None) -> None:
+    cfg = load_config()
+    channel, thread_path, label = resolve_target(cfg, project, channel_override)
+    state = load_thread(thread_path)
+    print(f"target:    {label}")
+    print(f"channel:   {channel}")
+    print(f"state at:  {thread_path}")
+    print(f"state:     {state}")
+
+
+def cmd_where(project: str | None, channel_override: str | None) -> None:
+    cfg = load_config()
+    _, _, label = resolve_target(cfg, project, channel_override)
+    print(label)
+
+
+def main() -> None:
+    p = argparse.ArgumentParser(
+        prog="slack-notify",
+        description="Claude Code용 슬랙 알림 헬퍼",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+    p.add_argument("text", nargs="?", help="메시지 텍스트")
+    mode_group = p.add_mutually_exclusive_group()
+    mode_group.add_argument("--new", action="store_true", help="새 thread 시작 (기존 무시·덮어씀)")
+    mode_group.add_argument("--reply", action="store_true", help="명시적 reply (thread 없으면 에러)")
+    mode_group.add_argument("--close", action="store_true", help="reply + thread 클리어")
+    mode_group.add_argument("--status", action="store_true", help="현재 컨텍스트 상태만 출력")
+    mode_group.add_argument("--where", action="store_true", help="어느 타겟으로 갈지만 출력")
+    p.add_argument("--project", help="cwd 대신 강제할 프로젝트 경로")
+    p.add_argument("--channel", help="매핑 무시하고 강제할 채널 ID")
+    args = p.parse_args()
+
+    if args.status:
+        cmd_status(args.project, args.channel)
+        return
+    if args.where:
+        cmd_where(args.project, args.channel)
+        return
+    if not args.text:
+        p.error("메시지 필요 (또는 --status/--where)")
+
+    mode = "new" if args.new else ("reply" if args.reply else ("close" if args.close else "auto"))
+    cmd_send(args.text, mode, args.project, args.channel)
+
+
+if __name__ == "__main__":
+    main()
