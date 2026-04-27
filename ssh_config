@@ -24,3 +24,7 @@ Host j2enty-GitHub
   UseKeychain yes
   AddKeysToAgent yes
   IdentityFile ~/.ssh/j2enty-GitHub
+Host nas
+  HostName 182.216.191.3
+  User miller
+  IdentityFile ~/.ssh/id_ed25519
