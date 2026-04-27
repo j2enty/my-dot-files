@@ -40,6 +40,7 @@ zinit snippet /opt/homebrew/share/autojump/autojump.zsh  # Autojump
 export PATH="$HOME/.local/bin:$PATH"
 export JAVA_HOME=$(/usr/libexec/java_home -v 21)
 export PATH="$JAVA_HOME/bin:$PATH"
+export PATH="/Applications/Visual Studio Code.app/Contents/Resources/app/bin:$PATH"
 
 # ============================================
 # 별칭
@@ -97,11 +98,6 @@ if command -v navi &>/dev/null; then
   eval "$(navi widget zsh)"
 fi
 
-# ============================================
-# Secrets — macOS Keychain 에서 읽어 env 로 주입
-# ============================================
-# GitHub MCP 서버용 PAT (security add-generic-password -s github-mcp 로 저장)
-export GITHUB_PERSONAL_ACCESS_TOKEN="$(security find-generic-password -s github-mcp -w 2>/dev/null)"
 
 # ============================================
 # zoxide — 반드시 파일 끝 (경고 방지)

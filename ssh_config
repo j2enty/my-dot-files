@@ -1,6 +1,19 @@
 # 맥미니 (Tailscale)
+Host miller-macmini.taila343d9.ts.net
+  HostName miller-macmini.taila343d9.ts.net
+  User miller
+
 Host macmini
   HostName miller-macmini.taila343d9.ts.net
+  User miller
+  IdentityFile ~/.ssh/id_ed25519
+  IdentitiesOnly yes
+  SendEnv TERM
+  SetEnv TERM=xterm-256color
+
+# Synology NAS (Tailscale)
+Host nas
+  HostName miller-synology.taila343d9.ts.net
   User miller
   IdentityFile ~/.ssh/id_ed25519
   IdentitiesOnly yes

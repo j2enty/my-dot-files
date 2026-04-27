@@ -17,3 +17,7 @@ claude/plans/
 claude/tasks/
 claude/.omc/
 claude/plugins/
+
+# slack-notify 동적 thread state (머신·시점별로 변함)
+claude/slack/thread_*.json
+claude/slack/dm_thread.json
