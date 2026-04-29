@@ -64,7 +64,7 @@ alias c="clear"
 alias ..="cd .."
 alias ...="cd ../.."
 alias python=python3
-alias macscreen='open vnc://miller-macmini.taila343d9.ts.net'
+alias screen_miller_macmini='open vnc://100.96.120.47'
 alias yolo='claude --dangerously-skip-permissions'
 
 # ============================================
@@ -107,6 +107,51 @@ export GITHUB_PERSONAL_ACCESS_TOKEN="$(security find-generic-password -s github-
 export SLACK_BOT_SEUL_TOKEN="$(security find-generic-password -s claude-slack-bot-seul-token -w 2>/dev/null)"
 
 [ -r ~/.config/secrets/tokens.env ] && source ~/.config/secrets/tokens.env
+
+
+# ============================================
+# NAS 마운트 (rclone NFS)
+#   mountnas        → 외부 IP + Tailscale 둘 다
+#   mountnas ip     → 외부 IP 만 (~/mnt/MillerNAS)
+#   mountnas ts     → Tailscale 만 (~/mnt/MillerNAS-ts)
+#   umountnas [ip|ts|all]  → 동일 인자 규칙으로 해제
+# ============================================
+mountnas() {
+  local target="${1:-all}"
+  if [[ "$target" != "ip" && "$target" != "ts" && "$target" != "all" ]]; then
+    echo "사용법: mountnas [ip|ts|all]  (기본 all)"
+    return 1
+  fi
+  mkdir -p ~/mnt/MillerNAS ~/mnt/MillerNAS-ts
+  if [[ "$target" == "ip" || "$target" == "all" ]]; then
+    rclone nfsmount MillerNAS:/ ~/mnt/MillerNAS \
+      --vfs-cache-mode full --addr 127.0.0.1:12000 --daemon \
+      && echo "[OK] MillerNAS (외부 IP) 마운트"
+  fi
+  if [[ "$target" == "ts" || "$target" == "all" ]]; then
+    rclone nfsmount MillerNAS-ts:/ ~/mnt/MillerNAS-ts \
+      --vfs-cache-mode full --addr 127.0.0.1:12001 --daemon \
+      && echo "[OK] MillerNAS-ts (Tailscale) 마운트"
+  fi
+}
+
+umountnas() {
+  local target="${1:-all}"
+  if [[ "$target" != "ip" && "$target" != "ts" && "$target" != "all" ]]; then
+    echo "사용법: umountnas [ip|ts|all]  (기본 all)"
+    return 1
+  fi
+  if [[ "$target" == "ip" || "$target" == "all" ]]; then
+    diskutil unmount force ~/mnt/MillerNAS 2>/dev/null
+    pkill -f "rclone nfsmount MillerNAS:/" 2>/dev/null
+    echo "[STOP] MillerNAS (외부 IP) 해제"
+  fi
+  if [[ "$target" == "ts" || "$target" == "all" ]]; then
+    diskutil unmount force ~/mnt/MillerNAS-ts 2>/dev/null
+    pkill -f "rclone nfsmount MillerNAS-ts:/" 2>/dev/null
+    echo "[STOP] MillerNAS-ts (Tailscale) 해제"
+  fi
+}
 
 
 # ============================================
