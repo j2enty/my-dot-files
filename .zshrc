@@ -106,6 +106,8 @@ export GITHUB_PERSONAL_ACCESS_TOKEN="$(security find-generic-password -s github-
 # Slack Bot Token (SEUL)
 export SLACK_BOT_SEUL_TOKEN="$(security find-generic-password -s claude-slack-bot-seul-token -w 2>/dev/null)"
 
+[ -r ~/.config/secrets/tokens.env ] && source ~/.config/secrets/tokens.env
+
 
 # ============================================
 # zoxide — 반드시 파일 끝 (경고 방지)
