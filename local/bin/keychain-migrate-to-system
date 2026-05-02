@@ -1,0 +1,176 @@
+#!/bin/bash
+# keychain-migrate-to-system
+# login keychain의 generic-password 항목을 System keychain으로 안전하게 이동
+#
+# 흐름: 꺼내기 → System 등록 → 검증 → login 삭제
+# 검증 실패 시 login 항목 보존 (롤백 안전)
+#
+# 주의:
+#   - 맥북 GUI 세션에서 실행 (login keychain "허용" prompt가 GUI로 뜸)
+#   - System keychain 등록은 sudo 필요
+#   - 머신 간 동기화 안 됨 → 각 머신에서 따로 실행
+
+set -euo pipefail
+
+SCRIPT_NAME="$(basename "$0")"
+SYSTEM_KC="/Library/Keychains/System.keychain"
+ACCOUNT="$USER"
+DRY_RUN=0
+SERVICES=()
+
+usage() {
+  cat <<EOF
+사용법: $SCRIPT_NAME [옵션] <service> [<service2> ...]
+
+login keychain → System keychain 항목 이동.
+
+옵션:
+  -a, --account <name>   계정 이름 (기본: \$USER = $USER)
+  -n, --dry-run          실제 변경 없이 시뮬레이션
+  -h, --help             이 도움말
+
+예시:
+  $SCRIPT_NAME github-mcp
+  $SCRIPT_NAME -n github-mcp claude-slack-bot-seul-token
+  $SCRIPT_NAME --account miller github-mcp
+
+주의:
+  - 맥북 GUI 세션에서 실행 (login keychain "허용" prompt가 GUI로 뜸)
+  - System keychain 등록은 sudo 필요
+  - 머신 간 동기화 안 됨 (각 머신에서 따로 실행)
+EOF
+}
+
+log()  { echo "[$SCRIPT_NAME] $*"; }
+warn() { echo "[$SCRIPT_NAME] ⚠ $*" >&2; }
+err()  { echo "[$SCRIPT_NAME] ✗ $*" >&2; }
+ok()   { echo "[$SCRIPT_NAME] ✓ $*"; }
+
+# 인자 파싱
+while (( $# > 0 )); do
+  case "$1" in
+    -a|--account)
+      [[ $# -ge 2 ]] || { err "--account 값 누락"; exit 2; }
+      ACCOUNT="$2"; shift 2 ;;
+    -n|--dry-run) DRY_RUN=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    --) shift; while (( $# > 0 )); do SERVICES+=("$1"); shift; done ;;
+    -*) err "알 수 없는 옵션: $1"; usage; exit 2 ;;
+    *) SERVICES+=("$1"); shift ;;
+  esac
+done
+
+if (( ${#SERVICES[@]} == 0 )); then
+  usage; exit 2
+fi
+
+# 단일 서비스 마이그레이션
+migrate_one() {
+  local service="$1"
+  local secret existing verified
+
+  log "[$service] 시작 (계정: $ACCOUNT)"
+
+  # 1) login keychain에서 꺼냄 — GUI prompt 가능
+  if ! secret="$(security find-generic-password -s "$service" -a "$ACCOUNT" -w 2>/dev/null)"; then
+    err "[$service] login keychain에서 못 찾음 — 건너뜀"
+    return 1
+  fi
+  log "[$service] login keychain에서 읽음 (길이: ${#secret})"
+
+  # 2) System에 이미 같은 service가 있는지 확인
+  if existing="$(security find-generic-password -s "$service" -w "$SYSTEM_KC" 2>/dev/null)"; then
+    if [[ "$existing" == "$secret" ]]; then
+      warn "[$service] System에 이미 동일 값 존재 — 등록 단계 건너뜀"
+    else
+      err "[$service] System에 다른 값이 이미 등록됨 — 충돌 방지를 위해 중단"
+      unset secret existing
+      return 1
+    fi
+    unset existing
+  else
+    # 3) System에 등록
+    if (( DRY_RUN )); then
+      log "[$service] [dry-run] System 등록 시뮬레이션"
+    else
+      if ! sudo security add-generic-password \
+          -a "$ACCOUNT" -s "$service" -w "$secret" \
+          -A "$SYSTEM_KC"; then
+        err "[$service] System keychain 등록 실패"
+        unset secret
+        return 1
+      fi
+      log "[$service] System keychain 등록 완료"
+    fi
+  fi
+
+  # 4) 검증
+  if (( ! DRY_RUN )); then
+    if ! verified="$(security find-generic-password -s "$service" -w "$SYSTEM_KC" 2>/dev/null)"; then
+      err "[$service] 검증 실패 — System에서 못 읽음. login 항목 보존"
+      unset secret
+      return 1
+    fi
+    if [[ "$verified" != "$secret" ]]; then
+      err "[$service] 검증 실패 — 값 불일치. login 항목 보존"
+      unset secret verified
+      return 1
+    fi
+    unset verified
+    log "[$service] 검증 통과"
+  fi
+
+  # 5) login에서 삭제
+  if (( DRY_RUN )); then
+    log "[$service] [dry-run] login 삭제 시뮬레이션"
+  else
+    if ! security delete-generic-password -s "$service" -a "$ACCOUNT" >/dev/null 2>&1; then
+      warn "[$service] login에서 삭제 실패 (수동 정리 필요)"
+    else
+      log "[$service] login에서 삭제 완료"
+    fi
+  fi
+
+  unset secret
+  ok "[$service] 마이그레이션 완료"
+  return 0
+}
+
+# 사전 점검
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  err "macOS 전용 스크립트입니다"; exit 1
+fi
+
+if (( DRY_RUN )); then
+  log "*** DRY-RUN 모드 — 실제 변경 없음 ***"
+fi
+
+# sudo 캐시 워밍 (실제 실행일 때만)
+if (( ! DRY_RUN )); then
+  log "sudo 권한 필요 (System keychain 등록용)"
+  sudo -v || { err "sudo 권한 획득 실패"; exit 1; }
+fi
+
+# 일괄 처리
+TOTAL=${#SERVICES[@]}
+SUCCESS=0
+FAILED=()
+
+for service in "${SERVICES[@]}"; do
+  echo
+  if migrate_one "$service"; then
+    (( SUCCESS++ ))
+  else
+    FAILED+=("$service")
+  fi
+done
+
+# 요약
+echo
+echo "═══════════════════════════════════════"
+log "결과: $SUCCESS / $TOTAL 성공"
+if (( ${#FAILED[@]} > 0 )); then
+  err "실패한 항목: ${FAILED[*]}"
+  exit 1
+fi
+ok "전체 완료"
