@@ -65,6 +65,7 @@ LINKS=(
   "claude/CLAUDE.md:$HOME/.claude/CLAUDE.md"
   "claude/settings.json:$HOME/.claude/settings.json"
   "claude/plugins:$HOME/.claude/plugins"
+  "ghostty:$HOME/.config/ghostty"
 )
 
 # local/bin/* 자동 추가 (실행 가능한 파일만)
